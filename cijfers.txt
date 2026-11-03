@@ -1,0 +1,3 @@
+wiskunde,7.5
+engels,6.0
+biologie,8.1
