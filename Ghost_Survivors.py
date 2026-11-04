@@ -61,6 +61,7 @@ hpbalk = play.new_progress_bar(min_value=0, max_value=5, value=5, bar_color='cri
 spawn_geluid = play.new_sound("Wave.wav")
 pompoen_pickup = play.new_sound("laserShoot.wav")
 heks_geluid = play.new_sound("Witch_Laugh.mp3")
+geraakt = play.new_sound("hitHurt.wav")
 
 #Verberg ongebruikte elementen
 def verberg_menu():
@@ -161,6 +162,13 @@ def klik_settings():
 def volume_slider(waarde):
     bgm.volume = (waarde/10)
 
+@schuif2.when_changed
+def volume_slider(waarde):
+    spawn_geluid.volume = (waarde/10)
+    pompoen_pickup.volume = (waarde/10)
+    heks_geluid.volume = (waarde/10)
+    geraakt.volume = (waarde/10)
+
 @menu_knop.when_clicked
 def klik_menu():
     toon_menu()
@@ -229,20 +237,78 @@ async def heks_spawn1():
     minimum_afstand = 500
     while True:
         if spel_actief == True and heksen == 0:
-            await play.timer(seconds=10)
+            await play.timer(seconds=6)
             spawn_x = play.random_number(-600, 600)
             spawn_y = play.random_number(-300, 300)
             while speler.distance_to(x=spawn_x, y=spawn_y) < minimum_afstand:
                 spawn_x = play.random_number(-600, 600)
                 spawn_y = play.random_number(-300, 300)
-            pompoen.x = spawn_x
-            pompoen.y = spawn_y
-            pompoen.show()
-            pompoen.start_physics(obeys_gravity=False, sensor=True)
-            pompoen_actief = True
+            heks1.x = spawn_x
+            heks1.y = spawn_y
+            heks1.show()
+            heks1.start_physics(obeys_gravity=False, can_move=True, sensor=True)
+            heksen += 1
             heks_geluid.play()
         else:
             await play.timer(seconds=0.2)
+
+@play.repeat_forever
+async def heks_spawn2():
+    global spel_actief
+    global heksen
+    minimum_afstand = 500
+    while True:
+        if spel_actief == True and heksen == 1:
+            await play.timer(seconds=45)
+            spawn_x = play.random_number(-600, 600)
+            spawn_y = play.random_number(-300, 300)
+            while speler.distance_to(x=spawn_x, y=spawn_y) < minimum_afstand:
+                spawn_x = play.random_number(-600, 600)
+                spawn_y = play.random_number(-300, 300)
+            heks2.x = spawn_x
+            heks2.y = spawn_y
+            heks2.show()
+            heks2.start_physics(obeys_gravity=False, can_move=True, sensor=True)
+            heksen += 1
+            heks_geluid.play()
+        else:
+            await play.timer(seconds=0.2)
+
+@play.repeat_forever
+def gedrag_heks1():
+    if heks1.x > speler.x:
+        heks1.x -= 0.5
+    if heks1.x < speler.x:
+        heks1.x += 2
+    if heks1.y > speler.y:
+        heks1.y -= 0.5
+    if heks1.y < speler.y:
+        heks1.y += 2.5
+
+@play.repeat_forever
+def gedrag_heks2():
+    if heks2.x > speler.x:
+        heks2.x -= 1.6
+    if heks2.x < speler.x:
+        heks2.x += 2
+    if heks2.y > speler.y:
+        heks2.y -= 2.5
+    if heks2.y < speler.y:
+        heks2.y += 0.5
+
+@play.repeat_forever
+async def geraakt_worden():
+    global spel_actief
+    global heksen
+    global hp
+    if not spel_actief or heksen == 0:
+        return
+    if speler.is_touching(heks1) or speler.is_touching(heks2):
+        await play.timer(seconds=0.27)
+        if speler.is_touching(heks1) or speler.is_touching(heks2):
+            verlies_hp()
+            geraakt.play()
+            await play.timer(seconds=1)
 
 @play.repeat_forever
 async def passieve_score():
@@ -251,10 +317,23 @@ async def passieve_score():
         if spel_actief:
             verhoog_score(1)
 
+@play.repeat_forever
+def game_over():
+    global hp
+    global score
+    global spel_actief
+    if hp == 0:
+        spel_actief = False
+        speler.hide()
+        pompoen.hide()
+        heks1.hide()
+        heks2.hide()
+        play.new_button(text=f"Game over: Score {score}", border_radius=25, height=175, width=850, color='orange', hover_color='darkorange', text_color='black', font_size=75)
+
 #Beweging controller
 horizontaal = 0.0 # Onthoud de huidige richting van de D-pad
 verticaal = 0.0
-snelheid = 250
+snelheid = 450
 @play.controllers.when_axis_moved(1, 0)
 def dpad_horizontaal(axis, value):
     global horizontaal
