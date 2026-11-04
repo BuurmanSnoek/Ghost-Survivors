@@ -1,5 +1,6 @@
 import pygame #Importeer modules (pygame is nodig om het scherm te kunnen maximaliseren)
 import play
+import random
 
 breedte = 1280 #Beelscherminstellingen (Automatisch fullscreen starten lijkt binnen Coderius play niet mogelijk)
 hoogte = 720
@@ -14,7 +15,15 @@ bgm = play.new_sound("Pumpkin_Village.mp3", loops=-1) #Achtergrondmuziek
 @play.when_video_ends(intro)
 def intro_klaar():
     intro.remove()
+    bgm.play()
     toon_menu()
+
+#Globals
+score = 0
+hp = 5
+spel_actief = False
+pompoen_actief = False
+heksen = 0
 
 #Spawn elementen hoofdmenu
 titel = play.new_image(image="Title_Image.jpg", y=175)
@@ -34,11 +43,24 @@ uitleg_besturing2 = play.new_text(words="of de D-pad van een SNES-controller", c
 uitleg_bonus = play.new_text(words="Spelers met een SNES-controller hebben een speciale bonus-kracht", color='ivory', font_size=42, y=-375)
 
 #Spawn elementen gameplay
-speler = play.new_image(image="spookje.png", size=6, transparency=75) #Spawn speler, muren, achtergrond
+speler = play.new_image(image="spookje.png", transparency=75) #Spawn speler, muren, achtergrond
+pompoen = play.new_image(image="Pumpkin.png", x=2000, y=2000)
+heks1 = play.new_image(image="Enemy_Witch.png", x=-2000, y=-2000)
+heks2 = play.new_image(image="Enemy_Witch_Mirror.png", x=-2000, y=2000)
 vloer = play.new_box(color='black', width=1920, height=30, y=-430)
-plafond = play.new_box(color='black', width=1920, height=30, y=430)
+plafond = play.new_box(color='black', width=1920, height=60, y=430)
 muur_links = play.new_box(color='black', width=150, height=1080, x=-815)
 muur_rechts = play.new_box(color='black', width=150, height=1080, x=815)
+
+#Spawn elementen gameplay UI
+score_tekst = play.new_text(words="0", color='ivory', font_size=20, x=-475, y=420)
+timer_tekst = play.new_text(words="00:00", color='ivory', font_size=20, y=420 )
+hpbalk = play.new_progress_bar(min_value=0, max_value=5, value=5, bar_color='crimson', background_color='darkgrey', x=475, y=423)
+
+#Audio
+spawn_geluid = play.new_sound("Wave.wav")
+pompoen_pickup = play.new_sound("laserShoot.wav")
+heks_geluid = play.new_sound("Witch_Laugh.mp3")
 
 #Verberg ongebruikte elementen
 def verberg_menu():
@@ -60,22 +82,29 @@ def verberg_settings():
 
 def verberg_gameplay():
     speler.hide()
+    pompoen.hide()
+    heks1.hide()
+    heks2.hide()
     vloer.hide()
     plafond.hide()
     muur_links.hide()
     muur_rechts.hide()
 
+def verberg_gameplay_ui():
+    score_tekst.hide()
+    timer_tekst.hide()
+    hpbalk.hide()
+
 verberg_menu()
 verberg_settings()
 verberg_gameplay()
-snelheid = 250
+verberg_gameplay_ui()
 
 def toon_menu(): #Functies om verschillende game states te tonen
     titel.show()
     tip.show()
     start_knop.show()
     settings_knop.show()
-    bgm.play()
 
 def toon_settings():
     menu_knop.show()
@@ -90,6 +119,8 @@ def toon_settings():
 
 def toon_gameplay():
     play.set_backdrop_image('BG_Graveyard.jpg')
+    speler.x = 0
+    speler.y = 0
     speler.show()
     vloer.show()
     plafond.show()
@@ -101,10 +132,25 @@ def toon_gameplay():
     muur_links.start_physics(obeys_gravity=False, stable=True)
     muur_rechts.start_physics(obeys_gravity=False, stable=True)
 
+def toon_gameplay_ui():
+    score_tekst.show()
+    timer_tekst.show()
+    hpbalk.show()
+    @play.repeat_forever
+    async def timer_bijhouden():
+        waarde_timer = 0
+        while True:
+            await play.timer(seconds=1)
+            waarde_timer += 1
+            timer_tekst.words = (f"{waarde_timer//60}:{waarde_timer%60}")
+
 @start_knop.when_clicked #Input menu
 def klik_start():
     toon_gameplay()
+    toon_gameplay_ui()
     verberg_menu()
+    global spel_actief
+    spel_actief = True
 
 @settings_knop.when_clicked
 def klik_settings():
@@ -131,9 +177,84 @@ def klik_video():
         toon_settings()
         bgm.volume = 1
 
+#Gebeurtenissen gameplay
+def verhoog_score(punten):
+    global score
+    score += punten
+    score_tekst.words = str(score)
+
+def verlies_hp():
+    global hp
+    hp -= 1
+    hpbalk.value = hp
+
+@play.repeat_forever
+async def controleer_pompoenen():
+    global pompoen_actief
+    if not spel_actief or not pompoen_actief:
+        return
+    if speler.is_touching(pompoen):
+        await play.timer(seconds=0.15)
+        pompoen.hide()
+        pompoen_actief = False
+        verhoog_score(100)
+        pompoen_pickup.play()
+
+@play.repeat_forever
+async def pompoen_spawn():
+    global spel_actief
+    global pompoen_actief
+    minimum_afstand = 250
+    while True:
+        if spel_actief == True and pompoen_actief == False:
+            await play.timer(seconds=10)
+            spawn_x = play.random_number(-680, 680)
+            spawn_y = play.random_number(-350, 350)
+            while speler.distance_to(x=spawn_x, y=spawn_y) < minimum_afstand:
+                spawn_x = play.random_number(-680, 680)
+                spawn_y = play.random_number(-350, 350)
+            pompoen.x = spawn_x
+            pompoen.y = spawn_y
+            pompoen.show()
+            pompoen.start_physics(obeys_gravity=False, sensor=True)
+            pompoen_actief = True
+            spawn_geluid.play()
+        else:
+            await play.timer(seconds=0.2)
+
+@play.repeat_forever
+async def heks_spawn1():
+    global spel_actief
+    global heksen
+    minimum_afstand = 500
+    while True:
+        if spel_actief == True and heksen == 0:
+            await play.timer(seconds=10)
+            spawn_x = play.random_number(-600, 600)
+            spawn_y = play.random_number(-300, 300)
+            while speler.distance_to(x=spawn_x, y=spawn_y) < minimum_afstand:
+                spawn_x = play.random_number(-600, 600)
+                spawn_y = play.random_number(-300, 300)
+            pompoen.x = spawn_x
+            pompoen.y = spawn_y
+            pompoen.show()
+            pompoen.start_physics(obeys_gravity=False, sensor=True)
+            pompoen_actief = True
+            heks_geluid.play()
+        else:
+            await play.timer(seconds=0.2)
+
+@play.repeat_forever
+async def passieve_score():
+    while True:
+        await play.timer(seconds=1.5)
+        if spel_actief:
+            verhoog_score(1)
+
 #Beweging controller
 horizontaal = 0.0 # Onthoud de huidige richting van de D-pad
 verticaal = 0.0
+snelheid = 250
 @play.controllers.when_axis_moved(1, 0)
 def dpad_horizontaal(axis, value):
     global horizontaal
@@ -189,28 +310,17 @@ def beweeg_speler():
     else:
         speler.physics.y_speed = 0
 
-#Skills
-@play.controllers.while_button_pressed(0, 0)
-def groei(button):
-    if speler.size < 11:
-        speler.size = speler.size+0.15
-@play.controllers.while_button_pressed(0, 1)
-def krimp(button):
-    if speler.size > 3:
-        speler.size = speler.size-0.15
+#@play.controllers.while_button_pressed(0, 0) #Skills
+#def groei(button):
+#    if speler.size < 50:
+#        speler.size = speler.size+0.45
+#@play.controllers.while_button_pressed(0, 1)
+#def krimp(button):
+#    if speler.size > 8:
+#        speler.size = speler.size-0.45
 
-#
-
-#Vijanden
-
-#Vijanden
-
-#Score
-
-#Timer
-
-#Wapens
-
-#HP
+#Spawn heks
+#Update HPbar 
+#Game Over
 
 play.start_program()
